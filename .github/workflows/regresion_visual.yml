@@ -51,18 +51,20 @@ jobs:
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte para Despliegue (SOLUCIONADO POR LA CONFIGURACIÓN DEL PATH)
-      - name: ⬆️ Cargar Reporte para Pages
-        uses: actions/upload-pages-artifact@v3
+      # 4. Cargar el Reporte como Artefacto (SOLUCIÓN FINAL para Windows Runner: usa 'upload-artifact@v4')
+      - name: ⬆️ Cargar Reporte como Artefacto
+        uses: actions/upload-artifact@v4
         with:
+          # El nombre 'github-pages' es requerido por el paso 5 (deploy-pages)
+          name: github-pages
           path: 'Reportes HTML - TN - DESKTOP - PROD'
 
-      # 5. Desplegar a GitHub Pages
+      # 5. Desplegar a GitHub Pages (Despliega el artefacto 'github-pages' creado en el paso 4)
       - name: 🌐 Desplegar a GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack (SOLUCIÓN FINAL: Se añadió el campo 'text' y se usa 'env')
+      # 6. Notificación a Slack (FIX: Incluye el campo 'text' de fallback y usa 'env')
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
