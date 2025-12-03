@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   run_regression_and_deploy:
-    runs-on: self-hosted # Ejecuta en tu máquina local
+    runs-on: self-hosted
     environment:
       name: github-pages # Define el entorno de despliegue
       url: ${{ steps.deployment.outputs.page_url }}
@@ -25,21 +25,18 @@ jobs:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
           
-      # 1. EJECUCIÓN DEL SCRIPT (Con corrección de Encoding)
+      # 1. EJECUCIÓN DEL SCRIPT (UTF-8 Fix)
       - name: 🚀 Ejecutar Regresión Visual (UTF-8 Fix)
         shell: cmd
         run: |
           @echo off
-          REM Forzar UTF-8 en CMD y Python
+          REM Forzar UTF-8 y limpiar reportes
           chcp 65001
           set PYTHONIOENCODING=utf-8
-          
-          REM Limpiar reportes viejos (necesario si el Runner se reutiliza)
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
-          REM Ejecución del script
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
       # 2. Renombrar el HTML generado a index.html
@@ -49,34 +46,29 @@ jobs:
           cd "Reportes HTML - TN - DESKTOP - PROD"
           Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
           
-      # 3. Backup (Opcional): Subir como Artifact ZIP
-      - name: 📦 Subir Artefacto (Backup)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Backup-Reporte-v${{ inputs.version_number }}-${{ github.run_id }}
-          path: "Reportes HTML - TN - DESKTOP - PROD"
-          
-      # 4. FIX CRÍTICO: Añadir Utilitarios de Git Bash al PATH
-      - name: 🔨 Asegurar Utilitarios Unix (Git Bash) en PATH
+      # 3. CONFIGURACIÓN CRÍTICA DEL ENTORNO DE WINDOWS
+      - name: 🔨 Asegurar Utilitarios Unix y Fix Path Conversion
         shell: powershell
         run: |
-          # Esta ruta contiene 'tar', 'bash' y otras utilidades.
-          # Reemplaza el PATH temporal del job para que las acciones lo encuentren.
+          # 3.1: Añadir utilidades de Git Bash (tar, bash) al PATH
           $gitBinPath = "C:\Program Files\Git\usr\bin"
           "$gitBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
-      # 5. Configuración del Entorno de Pages
+          # 3.2: CORRECCIÓN DE RUTAS CON ESPACIOS (MSYS_NO_PATHCONV=1)
+          # Esto previene que bash rompa C:\Users\Alan Herrera...
+          echo "MSYS_NO_PATHCONV=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # 4. Configuración del Entorno de Pages (Utiliza el nuevo PATH y ENV)
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 6. Cargar el Reporte para Despliegue (Ahora debería encontrar 'tar')
+      # 5. Cargar el Reporte para Despliegue (Aquí es donde ocurre el error, pero con el fix debe pasar)
       - name: ⬆️ Cargar Reporte para Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'Reportes HTML - TN - DESKTOP - PROD' # Carpeta con el index.html
+          path: 'Reportes HTML - TN - DESKTOP - PROD'
 
-      # 7. Desplegar a GitHub Pages
+      # 6. Desplegar a GitHub Pages
       - name: 🌐 Desplegar a GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
