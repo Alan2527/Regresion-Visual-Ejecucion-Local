@@ -1,4 +1,4 @@
-name: 👁️ Regresión Visual - DESKTOP PROD
+name:  Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -8,7 +8,6 @@ on:
         required: true
         default: '0'
 
-# Permisos requeridos por las acciones oficiales de GitHub Pages
 permissions:
   contents: write
   pages: write
@@ -18,21 +17,21 @@ jobs:
   run_regression_and_deploy:
     runs-on: self-hosted
     environment:
-      name: github-pages # Define el entorno de despliegue
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
           
-      # 1. EJECUCIÓN DEL SCRIPT (UTF-8 Fix)
-      - name: 🚀 Ejecutar Regresión Visual (UTF-8 Fix)
+      # 1. EJECUCIÓN DEL SCRIPT
+      - name: 🚀 Ejecutar Regresión Visual
         shell: cmd
         run: |
           @echo off
-          REM Forzar UTF-8 y limpiar reportes
           chcp 65001
           set PYTHONIOENCODING=utf-8
+          
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
@@ -46,29 +45,64 @@ jobs:
           cd "Reportes HTML - TN - DESKTOP - PROD"
           Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
           
-      # 3. CONFIGURACIÓN CRÍTICA DEL ENTORNO DE WINDOWS
-      - name: 🔨 Asegurar Utilitarios Unix y Fix Path Conversion
-        shell: powershell
-        run: |
-          # 3.1: Añadir utilidades de Git Bash (tar, bash) al PATH
-          $gitBinPath = "C:\Program Files\Git\usr\bin"
-          "$gitBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          
-          # 3.2: CORRECCIÓN DE RUTAS CON ESPACIOS (MSYS_NO_PATHCONV=1)
-          # Esto previene que bash rompa C:\Users\Alan Herrera...
-          echo "MSYS_NO_PATHCONV=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      # 4. Configuración del Entorno de Pages (Utiliza el nuevo PATH y ENV)
+      # 3. Configuración del Entorno de Pages
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 5. Cargar el Reporte para Despliegue (Aquí es donde ocurre el error, pero con el fix debe pasar)
+      # 4. Cargar el Reporte para Despliegue
       - name: ⬆️ Cargar Reporte para Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'Reportes HTML - TN - DESKTOP - PROD'
 
-      # 6. Desplegar a GitHub Pages
+      # 5. Desplegar a GitHub Pages
       - name: 🌐 Desplegar a GitHub Pages
-        id: deployment
+        id: deployment # Este ID es crucial para capturar la URL
         uses: actions/deploy-pages@v4
+
+      # 6. Notificación a Slack con la URL
+      - name: 🔔 Notificación de Reporte a Slack
+        uses: slackapi/slack-action@v1.26.0
+        # Ejecuta siempre, incluso si falla un paso anterior, para notificar el estado
+        if: always() 
+        with:
+          # Usamos el Secreto guardado
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # El mensaje en formato JSON de Slack (Block Kit)
+          payload: |
+            {
+              "text": ":chart_with_upwards_trend: *Reporte de Regresión Visual DESKTOP PROD*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Reporte de Regresión Visual DESKTOP PROD TN*"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Estado del Despliegue:*\n${{ job.status }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*URL del Reporte:*\n<${{ steps.deployment.outputs.page_url }}|Ver Reporte>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
+                    }
+                  ]
+                }
+              ]
+            }
