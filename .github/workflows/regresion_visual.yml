@@ -20,27 +20,25 @@ jobs:
     steps:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
-
-      # 1. Limpieza de reportes anteriores y Preparación de Entorno
-      - name: 🧹 Limpiar y Configurar Encoding (UTF-8)
-        shell: cmd
+          
+      # 1. EJECUCIÓN DEL SCRIPT (Con corrección de Encoding)
+      - name: 🚀 Ejecutar Regresión Visual (UTF-8 Fix)
+        shell: cmd # Forzamos CMD para estabilidad en la configuración de entorno
         run: |
           @echo off
-          REM Borrar reportes viejos para asegurar un despliegue limpio
+          REM Forzar UTF-8 en CMD (chcp 65001) y en Python (PYTHONIOENCODING)
+          chcp 65001
+          set PYTHONIOENCODING=utf-8
+          
+          REM Limpiar reportes viejos (lo movemos aquí para que use CMD)
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
-          REM Solución al UnicodeEncodeError y los caracteres especiales
-          chcp 65001
-          set PYTHONIOENCODING=utf-8
-          
-      # 2. Ejecución del Script de Python
-      - name: 🚀 Ejecutar Regresión Visual
-        # Usamos cmd/PowerShell por defecto, el encoding ya fue configurado
-        run: py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
+          REM Ejecución del script
+          py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 3. Renombrar el HTML generado
+      # 2. Renombrar el HTML generado
       - name: 📝 Renombrar a index.html para Pages
         shell: powershell
         run: |
@@ -50,7 +48,7 @@ jobs:
           # Buscamos el archivo HTML que contiene la marca de tiempo y lo renombramos a index.html
           Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
           
-      # 4. Backup (Opcional pero Recomendado): Subir como Artifact ZIP
+      # 3. Backup (Opcional pero Recomendado): Subir como Artifact ZIP
       - name: 📦 Subir Artefacto (Backup)
         uses: actions/upload-artifact@v4
         if: always()
@@ -58,9 +56,9 @@ jobs:
           name: Backup-Reporte-v${{ inputs.version_number }}-${{ github.run_id }}
           path: "Reportes HTML - TN - DESKTOP - PROD"
 
-      # 5. Publicación en GitHub Pages
+      # 4. Publicación en GitHub Pages
       - name: 🌐 Publicar Reporte Web (GitHub Pages)
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: "Reportes HTML - TN - DESKTOP - PROD" # La carpeta que se despliega
-          branch: gh-pages # La rama donde se guardarán los archivos web
+          folder: "Reportes HTML - TN - DESKTOP - PROD"
+          branch: gh-pages
