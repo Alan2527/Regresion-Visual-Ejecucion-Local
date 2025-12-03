@@ -1,6 +1,5 @@
 name:  Regresión Visual - DESKTOP PROD
 
-# Se ejecuta manualmente, solicitando la versión
 on:
   workflow_dispatch:
     inputs:
@@ -9,46 +8,48 @@ on:
         required: true
         default: '0'
 
-# Permisos necesarios para poder subir el reporte a GitHub Pages
+# AÑADIMOS 'pages: write' y 'id-token: write' para el despliegue oficial
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   run_regression_and_deploy:
     runs-on: self-hosted # Ejecuta en tu máquina local
+    environment:
+      name: github-pages # Define el entorno de despliegue
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
           
-      # 1. EJECUCIÓN DEL SCRIPT (Con corrección de Encoding)
+      # 1. EJECUCIÓN DEL SCRIPT (Con corrección de Encoding y PATH)
       - name: 🚀 Ejecutar Regresión Visual (UTF-8 Fix)
-        shell: cmd # Forzamos CMD para estabilidad en la configuración de entorno
+        shell: cmd
         run: |
           @echo off
-          REM Forzar UTF-8 en CMD (chcp 65001) y en Python (PYTHONIOENCODING)
+          REM Forzar UTF-8 en CMD y Python
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
-          REM Limpiar reportes viejos (lo movemos aquí para que use CMD)
+          REM Limpiar reportes viejos 
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
-          REM Ejecución del script
+          REM Ejecución del script (sin el prefijo 'scripts/' si está en la raíz)
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 2. Renombrar el HTML generado
+      # 2. Renombrar el HTML generado a index.html
       - name: 📝 Renombrar a index.html para Pages
         shell: powershell
         run: |
-          # Navegamos a la carpeta de reportes generada por el script.
           cd "Reportes HTML - TN - DESKTOP - PROD"
-          
-          # Buscamos el archivo HTML que contiene la marca de tiempo y lo renombramos a index.html
           Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
           
-      # 3. Backup (Opcional pero Recomendado): Subir como Artifact ZIP
+      # 3. Backup (Opcional): Subir como Artifact ZIP (Artefacto de GitHub)
       - name: 📦 Subir Artefacto (Backup)
         uses: actions/upload-artifact@v4
         if: always()
@@ -56,9 +57,17 @@ jobs:
           name: Backup-Reporte-v${{ inputs.version_number }}-${{ github.run_id }}
           path: "Reportes HTML - TN - DESKTOP - PROD"
 
-      # 4. Publicación en GitHub Pages
-      - name: 🌐 Publicar Reporte Web (GitHub Pages)
-        uses: JamesIves/github-pages-deploy-action@v4
+      # 4. Configuración del Entorno de Pages (Paso nuevo)
+      - name: ⚙️ Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # 5. Cargar el Reporte para Despliegue (Paso nuevo)
+      - name: ⬆️ Cargar Reporte para Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          folder: "Reportes HTML - TN - DESKTOP - PROD"
-          branch: gh-pages
+          path: 'Reportes HTML - TN - DESKTOP - PROD' # Carpeta con el index.html
+
+      # 6. Desplegar a GitHub Pages (Paso nuevo)
+      - name: 🌐 Desplegar a GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
