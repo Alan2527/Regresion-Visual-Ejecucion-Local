@@ -24,7 +24,7 @@ jobs:
       # Se pasa el input 'version_number' que recibe tu script en sys.argv[1]
       - name: 🚀 Ejecutar Regresión Visual
         run: |
-          python regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
+          py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
       # 5. Subir los resultados a GitHub
       # El script guarda los reportes en "Reportes HTML - TN - DESKTOP - PROD"
