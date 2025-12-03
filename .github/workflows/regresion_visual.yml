@@ -62,18 +62,17 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack con la URL (ACCIÓN CORREGIDA: actions/slack@v1)
-      - name: 🔔 Notificación de Reporte a Slack
-        uses: actions/slack@v1
-        # Se ejecuta siempre (éxito o falla)
+      # 6. Notificación a Slack con la URL (¡ACCIÓN FINAL Y ESTABLE!)
+      - name: 🔔 Notificación de Reporte a Slack (Final)
+        uses: rtCamp/action-slack-notify@v2
         if: always() 
-        with:
-          # Debe coincidir con el nombre del Secreto guardado en GitHub
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          # El color dependerá del resultado del Job: verde para éxito, rojo para falla
-          msg-color: ${{ job.status == 'success' && 'good' || 'danger' }} 
-          # Cuerpo del mensaje en formato Slack Markdown
-          msg-success: |
+        env:
+          # Esta acción usa una variable de entorno para el Webhook
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_USERNAME: GitHub Actions Report
+          SLACK_ICON: https://cdn-icons-png.flaticon.com/512/25/25231.png # Icono de GitHub
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }} 
+          SLACK_MESSAGE: |
             :chart_with_upwards_trend: *Estado de Regresión Visual (DESKTOP PROD)*
             *Versión Testeada:* ${{ github.event.inputs.version_number }}
             *Estado Final:* ${{ job.status }}
