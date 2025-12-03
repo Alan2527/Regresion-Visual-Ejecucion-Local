@@ -1,0 +1,38 @@
+name:  Regresión Visual - Desktop Prod
+
+# 1. Activación Manual: Te pedirá la versión antes de arrancar
+on:
+  workflow_dispatch:
+    inputs:
+      version_number:
+        description: 'Número de versión a testear (Ej: 170)'
+        required: true
+        default: '0'
+
+jobs:
+  run_regression_local:
+    # 2. IMPORTANTE: Esto le dice a GitHub que use TU máquina
+    runs-on: self-hosted
+
+    steps:
+      # 3. Descarga el repositorio en tu máquina (en la carpeta _work del runner)
+      - name: ⬇️ Checkout del código
+        uses: actions/checkout@v4
+
+      # 4. Ejecución del Script
+      # Python ya está instalado en tu máquina, así que lo llamamos directo.
+      # Se pasa el input 'version_number' que recibe tu script en sys.argv[1]
+      - name: 🚀 Ejecutar Regresión Visual
+        run: |
+          python regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
+
+      # 5. Subir los resultados a GitHub
+      # El script guarda los reportes en "Reportes HTML - TN - DESKTOP - PROD"
+      # Usamos 'if: always()' para que suba el reporte aunque el test falle.
+      - name: ⬆️ Subir Reportes y Capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reporte-Regresion-v${{ inputs.version_number }}-${{ github.run_id }}
+          path: "Reportes HTML - TN - DESKTOP - PROD"
+          retention-days: 5
