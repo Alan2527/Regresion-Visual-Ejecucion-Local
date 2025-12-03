@@ -51,7 +51,7 @@ jobs:
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte para Despliegue (FAVOR DE SOLUCIONAR EL ENTORNO PARA ESTE PASO)
+      # 4. Cargar el Reporte para Despliegue (SOLUCIONADO POR LA CONFIGURACIÓN DEL PATH)
       - name: ⬆️ Cargar Reporte para Pages
         uses: actions/upload-pages-artifact@v3
         with:
@@ -62,7 +62,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack (SOLUCIÓN FINAL: Se añadió el campo 'text' de fallback)
+      # 6. Notificación a Slack (SOLUCIÓN FINAL: Se añadió el campo 'text' y se usa 'env')
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
