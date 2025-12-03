@@ -1,4 +1,4 @@
-name:  Regresión Visual - DESKTOP PROD
+name: 👁️ Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
     runs-on: self-hosted
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }} # Esta es la URL que queremos generar
 
     steps:
       - name: ⬇️ Checkout del código
@@ -40,14 +40,14 @@ jobs:
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 2. Preparación, Limpieza y Compresión del Reporte (PowerShell)
+      # 2. Preparación, Limpieza y Compresión del Reporte (Genera el ZIP Limpio)
       - name: 📝 Preparar Artefacto ZIP Limpio
         id: prepare_artifact
         shell: powershell
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           $zipPath = "github-pages.zip"
-          $tempDir = "pages_temp" # Carpeta temporal para garantizar estructura limpia
+          $tempDir = "pages_temp"
           
           # 1. Renombrar el HTML a index.html (necesario para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
@@ -62,10 +62,10 @@ jobs:
           if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
           New-Item -Path $tempDir -ItemType Directory | Out-Null
           
-          # 3. Mover/Copiar los contenidos esenciales a la carpeta temporal (estructura plana para el ZIP)
+          # 3. Mover/Copiar los contenidos esenciales a la carpeta temporal
           Get-ChildItem -Path "$reportDir\*" | Move-Item -Destination $tempDir
           
-          # 4. Eliminar el directorio original problemático
+          # 4. Eliminar el directorio original
           Remove-Item $reportDir -Recurse -Force
 
           # 5. Limpiar ZIP antiguo si existe
@@ -80,64 +80,19 @@ jobs:
           # 8. Establecer la ruta del ZIP como la salida
           echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
 
-      # 3. Configuración del Entorno de Pages
-      - name: ⚙️ Configurar GitHub Pages
-        uses: actions/configure-pages@v5
-
-      # 4. Cargar el ZIP como Artefacto
+      # 3. Cargar el ZIP como Artefacto (Sube el archivo 'github-pages')
       - name: ⬆️ Cargar Artefacto ZIP
         uses: actions/upload-artifact@v4
         with:
           name: github-pages
           path: ${{ steps.prepare_artifact.outputs.ZIP_PATH }}
           retention-days: 1
-          
-      # 5. Desplegar a GitHub Pages (El paso crítico que genera la URL)
+      
+      # 4. Configuración del Entorno de Pages
+      - name: ⚙️ Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # 5. Desplegar a GitHub Pages (El paso crítico que debe completarse sin fallos)
       - name: 🌐 Desplegar a GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-      # 6. Notificación a Slack (Utiliza la URL de Pages si el paso 5 tiene éxito)
-      - name: 🔔 Notificación de Reporte a Slack
-        uses: slackapi/slack-github-action@v1.23.0
-        if: always() 
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
-        with:
-          payload: |
-            {
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*"
-                  }
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*URL del Reporte:*\n<${{ steps.deployment.outputs.page_url }}|Ver Reporte>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
-                    }
-                  ]
-                }
-              ]
-            }
