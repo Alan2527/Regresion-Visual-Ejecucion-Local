@@ -29,9 +29,11 @@ jobs:
         shell: cmd
         run: |
           @echo off
+          REM La configuración de UTF-8 es CRÍTICA
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
+          REM Limpiar reportes viejos 
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
@@ -57,52 +59,24 @@ jobs:
 
       # 5. Desplegar a GitHub Pages
       - name: 🌐 Desplegar a GitHub Pages
-        id: deployment # Este ID es crucial para capturar la URL
+        id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack con la URL
+      # 6. Notificación a Slack con la URL (ACCIÓN CORREGIDA: actions/slack@v1)
       - name: 🔔 Notificación de Reporte a Slack
-        uses: slackapi/slack-action@v1.26.0
-        # Ejecuta siempre, incluso si falla un paso anterior, para notificar el estado
+        uses: actions/slack@v1
+        # Se ejecuta siempre (éxito o falla)
         if: always() 
         with:
-          # Usamos el Secreto guardado
+          # Debe coincidir con el nombre del Secreto guardado en GitHub
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          # El mensaje en formato JSON de Slack (Block Kit)
-          payload: |
-            {
-              "text": ":chart_with_upwards_trend: *Reporte de Regresión Visual DESKTOP PROD*",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Reporte de Regresión Visual DESKTOP PROD TN*"
-                  }
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Estado del Despliegue:*\n${{ job.status }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*URL del Reporte:*\n<${{ steps.deployment.outputs.page_url }}|Ver Reporte>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
-                    }
-                  ]
-                }
-              ]
-            }
+          # El color dependerá del resultado del Job: verde para éxito, rojo para falla
+          msg-color: ${{ job.status == 'success' && 'good' || 'danger' }} 
+          # Cuerpo del mensaje en formato Slack Markdown
+          msg-success: |
+            :chart_with_upwards_trend: *Estado de Regresión Visual (DESKTOP PROD)*
+            *Versión Testeada:* ${{ github.event.inputs.version_number }}
+            *Estado Final:* ${{ job.status }}
+            
+            :link: *URL del Reporte de TN:* <${{ steps.deployment.outputs.page_url }}|Ver Reporte Completo>
+            :github: *Ver Ejecución en Actions:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>
