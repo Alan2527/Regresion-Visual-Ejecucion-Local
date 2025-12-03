@@ -51,7 +51,7 @@ jobs:
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte para Despliegue (Ahora funcionará con 'tar')
+      # 4. Cargar el Reporte para Despliegue
       - name: ⬆️ Cargar Reporte para Pages
         uses: actions/upload-pages-artifact@v3
         with:
@@ -62,12 +62,15 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack (ACCIÓN NODE.JS COMPATIBLE CON WINDOWS)
+      # 6. Notificación a Slack (ACCIÓN NODE.JS Y ENV)
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
+        env:
+          # Variable de entorno necesaria para que la acción lea el secreto
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # El 'payload' contiene el formato del mensaje
           payload: |
             {
               "blocks": [
