@@ -51,7 +51,7 @@ jobs:
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte para Despliegue
+      # 4. Cargar el Reporte para Despliegue (Ahora funcionará con 'tar')
       - name: ⬆️ Cargar Reporte para Pages
         uses: actions/upload-pages-artifact@v3
         with:
@@ -62,20 +62,45 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack con la URL (¡ACCIÓN FINAL Y ESTABLE!)
-      - name: 🔔 Notificación de Reporte a Slack (Final)
-        uses: rtCamp/action-slack-notify@v2
+      # 6. Notificación a Slack (ACCIÓN NODE.JS COMPATIBLE CON WINDOWS)
+      - name: 🔔 Notificación de Reporte a Slack
+        uses: slackapi/slack-github-action@v1.23.0
         if: always() 
-        env:
-          # Esta acción usa una variable de entorno para el Webhook
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_USERNAME: GitHub Actions Report
-          SLACK_ICON: https://cdn-icons-png.flaticon.com/512/25/25231.png # Icono de GitHub
-          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }} 
-          SLACK_MESSAGE: |
-            :chart_with_upwards_trend: *Estado de Regresión Visual (DESKTOP PROD)*
-            *Versión Testeada:* ${{ github.event.inputs.version_number }}
-            *Estado Final:* ${{ job.status }}
-            
-            :link: *URL del Reporte de TN:* <${{ steps.deployment.outputs.page_url }}|Ver Reporte Completo>
-            :github: *Ver Ejecución en Actions:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":chart_with_upwards_trend: *Estado de Regresión Visual (DESKTOP PROD)*"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Estado del Job:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*URL del Reporte:*\n<${{ steps.deployment.outputs.page_url }}|Ver Reporte>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
+                    }
+                  ]
+                }
+              ]
+            }
