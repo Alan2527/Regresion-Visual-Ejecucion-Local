@@ -40,33 +40,42 @@ jobs:
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 2. Renombrar el HTML generado a index.html (Añadida limpieza de archivos ocultos)
-      - name: 📝 Renombrar a index.html para Pages
+      # 2. Preparación y Renombrado del Reporte (PowerShell)
+      - name: 📝 Preparar Reporte (Renombrar y Comprimir)
+        id: prepare_artifact
         shell: powershell
         run: |
-          # Navegamos a la carpeta de reportes
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
+          $zipPath = "github-pages.zip" # Nombre del archivo ZIP a subir
+          
+          # 1. Navegar y Renombrar
           Set-Location $reportDir
-          
-          # Renombramos el HTML
           Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
-
-          # Limpiamos archivos ocultos que podrían causar el error de enlace/symlink de Pages
-          Get-ChildItem -Path . -Force -Hidden | Where-Object { $_.PSIsContainer -eq $false } | Remove-Item -Force -ErrorAction SilentlyContinue
-          
           Set-Location ..
           
+          # 2. Limpiar ZIP antiguo si existe
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          
+          # 3. COMPRESIÓN MANUAL: Crea un ZIP limpio sin metadatos problemáticos
+          # Usamos Compress-Archive para empaquetar la carpeta de reportes en un ZIP.
+          # Pages soporta subir artefactos como ZIP.
+          Compress-Archive -Path $reportDir\* -DestinationPath $zipPath
+          
+          # 4. Establecer la ruta del ZIP como la salida para el siguiente paso de subida
+          echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
+
       # 3. Configuración del Entorno de Pages
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte como Artefacto (Solución para Windows: usa 'upload-artifact@v4')
-      - name: ⬆️ Cargar Reporte como Artefacto
+      # 4. Cargar el ZIP como Artefacto (Sube el archivo ZIP creado manualmente)
+      - name: ⬆️ Cargar Artefacto ZIP
         uses: actions/upload-artifact@v4
         with:
-          # El nombre 'github-pages' es requerido por el paso 5 (deploy-pages)
+          # El nombre 'github-pages' es clave
           name: github-pages
-          path: 'Reportes HTML - TN - DESKTOP - PROD'
+          # El path ahora apunta al ZIP creado en el paso anterior
+          path: ${{ steps.prepare_artifact.outputs.ZIP_PATH }}
           retention-days: 1
           
       # 5. Desplegar a GitHub Pages 
@@ -74,7 +83,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # 6. Notificación a Slack (Incluye el campo 'text' y usa 'env')
+      # 6. Notificación a Slack 
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
