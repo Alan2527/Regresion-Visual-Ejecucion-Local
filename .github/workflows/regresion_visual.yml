@@ -48,7 +48,7 @@ jobs:
       - name: 📝 Renombrar a index.html y Commit a gh-pages (PROCESO ROBUSTO DE GIT)
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          $ErrorActionPreference = "Stop" # ¡Añadido para seguridad!
+          $ErrorActionPreference = "Stop" 
           
           # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
@@ -64,13 +64,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # 2.3. Despliegue de Git MÁS ROBUSTO (Corrección de la causa del 404)
-          # Nos aseguramos de NO estar en 'gh-pages' antes de intentar borrarla o crearla
           git checkout main -f
-          
-          # Borramos la rama local 'gh-pages' si existe, para asegurar la limpieza del checkout --orphan
           git branch -D gh-pages -f | Out-Null
-          
-          # Creamos la nueva rama 'gh-pages' sin historial (esencial para GitHub Pages)
           git checkout --orphan gh-pages
           
           # 2.4. Limpiar el directorio raíz (borrar código fuente)
@@ -87,7 +82,7 @@ jobs:
           git push -f origin gh-pages
         shell: powershell
         
-      # 3. Notificación a Slack (Revertida a sintaxis YAML simple)
+      # 3. Notificación a Slack (CORREGIDO: Eliminado el campo 'text' redundante)
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
@@ -96,30 +91,16 @@ jobs:
         with:
           payload: |
             {
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*"
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)* - Estado: ${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }} - Versión: ${{ github.event.inputs.version_number }}"
                   }
                 },
                 {
                   "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
-                    }
-                  ]
                 },
                 {
                   "type": "section",
