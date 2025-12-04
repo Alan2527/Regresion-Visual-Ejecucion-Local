@@ -1,7 +1,6 @@
 name: Regresión Visual - DESKTOP PROD
 
 on:
-  # Permite ejecutar el workflow manualmente y pasar el número de versión.
   workflow_dispatch:
     inputs:
       version_number:
@@ -10,9 +9,9 @@ on:
         default: '0'
 
 permissions:
-  contents: read     # Necesario para el checkout
-  pages: write       # Necesario para desplegar en GitHub Pages
-  id-token: write    # Necesario para la autenticación de despliegue
+  contents: read     
+  pages: write       
+  id-token: write    
 
 jobs:
   # 1. JOB DE EJECUCIÓN (Corre en tu Runner de Windows y sube el artefacto)
@@ -44,7 +43,6 @@ jobs:
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # Renombrar a index.html
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -55,46 +53,43 @@ jobs:
           # Mover todo el contenido al directorio _site
           Move-Item -Path $reportDir -Destination "_site" -Force
       
-      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR (Compatible con Windows)
       - name: ⬆️ Subir Artefacto para Transferencia
         uses: actions/upload-artifact@v4
         with:
-          name: pages-report-artifact # Nombre del artefacto
+          name: pages-report-artifact 
           path: _site # Sube el contenido de _site
           retention-days: 1 
 
-  # 2. JOB DE DESPLIEGUE (Corre en un Runner de GitHub compatible)
+  # 2. JOB DE DESPLIEGUE (Corre en un Runner de GitHub compatible: Ubuntu)
   deploy_pages:
     environment:
       name: github-pages
-      # Usa la URL que te dará el paso de despliegue
       url: ${{ steps.deployment.outputs.page_url }} 
     
-    # Este paso debe correr en un runner alojado en GitHub (Linux/Ubuntu)
     runs-on: ubuntu-latest 
-    needs: run_regression # Espera a que el job anterior haya terminado
+    needs: run_regression 
 
     steps:
       # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
-      - name: ⬇️ Descargar Reporte (del runner de Windows)
+      - name: ⬇️ Descargar Reporte
         uses: actions/download-artifact@v4
         with:
           name: pages-report-artifact
-          # Importante: Si no se especifica 'path', el contenido se descarga en una carpeta con el mismo nombre del artefacto.
-
+          path: artifact_staging # <-- Descargamos a esta carpeta temporal.
+          
       # 2.2. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
-      - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
+      - name: ⬆️ Subir Artefacto para Pages (¡FIX de Ruta Definitivo!)
         uses: actions/upload-pages-artifact@v3 
         with:
-          # CORRECCIÓN: Apuntamos a la carpeta que download-artifact creó con el contenido
-          path: pages-report-artifact 
+          # Esta es la ruta correcta: carpeta temporal / subcarpeta con nombre del artefacto
+          path: artifact_staging/pages-report-artifact # <-- ¡Esta ruta es la clave!
           
-      # 2.3. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
+      # 2.3. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (Soluciona el problema de la URL antigua)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
         id: deployment
-        uses: actions/deploy-pages@v4 # Espera a que la URL esté 100% actualizada
+        uses: actions/deploy-pages@v4 
 
-      # 2.4. NOTIFICACIÓN A SLACK (USA LA URL CONFIRMADA)
+      # 2.4. NOTIFICACIÓN A SLACK (Usa la URL confirmada)
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
