@@ -1,130 +1,81 @@
-name:  Regresión Visual - DESKTOP PROD
+name: Ejecutar Regresión Visual y Publicar Reporte
 
 on:
   workflow_dispatch:
     inputs:
-      version_number:
-        description: 'Número de versión a testear'
+      version:
+        description: "Número de versión a testear"
         required: true
-        default: '0'
-
-permissions:
-  contents: write # Necesario para hacer el commit del reporte
-  pages: write    
-  id-token: write 
+        default: "1"
 
 jobs:
-  run_regression_and_deploy:
-    runs-on: self-hosted
-    environment:
-      name: github-pages
-      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout del código (CON TOKEN EXPLÍCITO)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      # 1. EJECUCIÓN DEL SCRIPT
-      - name: 🚀 Ejecutar Regresión Visual
-        shell: cmd
-        run: |
-          @echo off
-          REM La configuración de UTF-8 es CRÍTICA
-          chcp 65001
-          set PYTHONIOENCODING=utf-8
-          
-          REM Limpiar reportes viejos 
-          if exist "Reportes HTML - TN - DESKTOP - PROD" (
-            rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
-          )
-          
-          py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
+      # --- CLONAR REPO ---
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
-      - name: 📝 Renombrar a index.html y Commit a gh-pages
-        run: |
-          $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          
-          # 2.1. Renombrar el HTML a index.html (esencial para Pages)
-          $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
-          if ($reportFile) {
-              Rename-Item -Path $reportFile.FullName -NewName "index.html"
-          } else {
-              Write-Host "Error: No se encontró el archivo de reporte HTML."
-              exit 1
-          }
-          
-          # 2.2. Configurar Git para la autoría
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
-          git checkout --orphan gh-pages
-          
-          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
-          Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
-          
-          # 2.5. Mover contenido del reporte a la raíz
-          Copy-Item -Path "$reportDir\*" -Destination . -Recurse -Force
-          Remove-Item -Path $reportDir -Recurse -Force
-          
-          # 2.6. Commit y Push
-          git add .
-          git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
-          # Forzar el push a la rama 'gh-pages'
-          git push -f origin gh-pages
-        shell: powershell
-        
-      # 3. Notificación a Slack
-      - name: 🔔 Notificación de Reporte a Slack
-        uses: slackapi/slack-github-action@v1.23.0
-        if: always() 
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
+      # --- INSTALAR PYTHON ---
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          payload: |
-            {
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*"
-                  }
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
-                    }
-                  ]
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?v=${{ github.run_id }}| Abrir Reporte :link:>"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Ver Ejecución:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
-                  }
-                }
-              ]
-            }
+          python-version: 3.10
+
+      # --- INSTALAR DEPENDENCIAS ---
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager pillow opencv-python-headless
+
+      # --- EJECUTAR TU SCRIPT ---
+      - name: Run regression script
+        id: run_script
+        run: |
+          python regre_visual_tn_desk_prod.py ${{ github.event.inputs.version }}
+
+          # TOMAR EL TIMESTAMP PRODUCIDO POR EL SCRIPT
+          TS=$(ls "Reportes HTML - TN - DESKTOP - PROD" | grep "Reporte_DOM" | tail -n 1 | sed 's/.*_\([0-9]*_[0-9]*\)\.html/\1/')
+          echo "timestamp=$TS" >> $GITHUB_OUTPUT
+
+      # --- PUBLICAR EN GITHUB PAGES ---
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: "Reportes HTML - TN - DESKTOP - PROD"
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy-pages.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy-pages
+        uses: actions/deploy-pages@v2
+
+  notify:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enviar mensaje a Slack
+        run: |
+          # ARMAR URL FINAL ANTI-CACHE
+          BASE_URL="https://alan2527.github.io/Regresion-Visual-Ejecucion-Local"
+          HTML_FILE=$(ls "Reportes HTML - TN - DESKTOP - PROD" | grep "Reporte_DOM" | tail -n 1)
+          TIMESTAMP="${{ needs.build.outputs.timestamp }}"
+          FINAL_URL="$BASE_URL/$HTML_FILE?v=$TIMESTAMP"
+
+          echo "URL final: $FINAL_URL"
+
+          # ENVIAR A SLACK
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"📊 *Nuevo reporte de regresión ejecutado*\n👉 Versión: ${GITHUB_REF##*/}\n🔗 $FINAL_URL\"}" \
+            ${{ secrets.SLACK_WEBHOOK }}
