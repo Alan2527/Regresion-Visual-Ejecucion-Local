@@ -9,7 +9,7 @@ on:
         default: '0'
 
 permissions:
-  contents: write # Necesario para hacer el commit del reporte
+  contents: write
   pages: write    
   id-token: write 
 
@@ -18,14 +18,15 @@ jobs:
     runs-on: self-hosted
     environment:
       name: github-pages
-      # Construimos la URL manualmente ya que no usamos la salida del deploy-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
 
     steps:
-      - name: ⬇️ Checkout del código
+      - name: ⬇️ Checkout del código (CON TOKEN EXPLÍCITO)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 
+          # CORRECCIÓN DE ERROR: Usar el token para la autenticación en el runner autoalojado
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       # 1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
@@ -78,8 +79,6 @@ jobs:
           git push -f origin gh-pages
         shell: powershell
         
-      # (Paso 'configure-pages' ELIMINADO porque causaba error y no es necesario aquí)
-          
       # 3. Notificación a Slack
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
