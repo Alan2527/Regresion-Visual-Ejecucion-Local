@@ -9,14 +9,13 @@ on:
         default: '0'
 
 permissions:
-  contents: write # Necesario para hacer el commit del reporte
+  contents: write 
   pages: write    
   id-token: write 
 
 jobs:
   run_regression_and_deploy:
     runs-on: self-hosted
-    # Asegurarse de que el environment 'github-pages' esté configurado en la repo
     environment:
       name: github-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
@@ -82,7 +81,7 @@ jobs:
           git push -f origin gh-pages
         shell: powershell
         
-      # 3. Notificación a Slack (CORREGIDO: Eliminado el campo 'text' redundante)
+      # 3. Notificación a Slack (CORREGIDO: Reintroducido campo 'text' requerido)
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
@@ -91,6 +90,7 @@ jobs:
         with:
           payload: |
             {
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
               "blocks": [
                 {
                   "type": "section",
