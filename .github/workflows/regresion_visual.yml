@@ -1,4 +1,4 @@
-name:  Regresión Visual - DESKTOP PROD
+name: 👁️ Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -15,15 +15,16 @@ permissions:
 
 jobs:
   run_regression_and_deploy:
-    # Usamos self-hosted (Windows) para la ejecución
     runs-on: self-hosted
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
 
     steps:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
           
       # 1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
@@ -41,16 +42,12 @@ jobs:
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 2. Preparación, Limpieza y Compresión (USO DE POWERSHELL, NO DE TAR)
-      - name: 📝 Crear Artefacto ZIP Limpio (PowerShell)
-        id: prepare_artifact
-        shell: powershell
+      # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
+      - name: 📝 Renombrar a index.html y Commit a gh-pages
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          $zipPath = "github-pages.zip" # Nombre requerido para el despliegue
-          $tempDir = "pages_temp"
           
-          # 1. Renombrar el HTML a index.html (necesario para Pages)
+          # 2.1. Renombrar el HTML a index.html
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -59,41 +56,73 @@ jobs:
               exit 1
           }
           
-          # 2. Crear la carpeta temporal limpia
-          if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
-          New-Item -Path $tempDir -ItemType Directory | Out-Null
+          # 2.2. Configurar Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 3. Mover/Copiar los contenidos esenciales a la carpeta temporal
-          Get-ChildItem -Path "$reportDir\*" | Move-Item -Destination $tempDir
+          # 2.3. Crear rama huérfana (sin historia)
+          git checkout --orphan gh-pages
           
-          # 4. Eliminar el directorio original
-          Remove-Item $reportDir -Recurse -Force
-
-          # 5. Limpiar ZIP antiguo si existe
-          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          # 2.4. Limpiar directorio raíz (borrar código fuente, mantener solo reporte y .git)
+          Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
           
-          # 6. COMPRESIÓN MANUAL
-          Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath
+          # 2.5. Mover contenido del reporte a la raíz
+          Copy-Item -Path "$reportDir\*" -Destination . -Recurse -Force
+          Remove-Item -Path $reportDir -Recurse -Force
           
-          # 7. Limpiar la carpeta temporal
-          Remove-Item $tempDir -Recurse -Force
-          
-          # 8. Establecer la ruta del ZIP como la salida
-          echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
-
-      # 3. Cargar el ZIP como Artefacto (Usamos la acción GENÉRICA de subida)
-      - name: ⬆️ Cargar Artefacto ZIP (Formato Pages)
-        uses: actions/upload-artifact@v4
-        with:
-          name: github-pages
-          path: ${{ steps.prepare_artifact.outputs.ZIP_PATH }}
-          retention-days: 1
-      
-      # 4. Configuración del Entorno de Pages
+          # 2.6. Commit y Push
+          git add .
+          git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
+          git push -f origin gh-pages
+        shell: powershell
+        
+      # 3. Configuración de Pages
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
-
-      # 5. Desplegar a GitHub Pages (Consume el artefacto subido en el paso 3)
-      - name: 🌐 Desplegar a GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        with:
+          static_site_generator: custom
+          
+      # 4. Notificación a Slack
+      - name: 🔔 Notificación de Reporte a Slack
+        uses: slackapi/slack-github-action@v1.23.0
+        if: always() 
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
+        with:
+          payload: |
+            {
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Versión Testeada:*\n${{ github.event.inputs.version_number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*URL del Reporte:*\n<https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
+                    }
+                  ]
+                }
+              ]
+            }
