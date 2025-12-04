@@ -1,6 +1,7 @@
 name: Regresión Visual - DESKTOP PROD
 
 on:
+  # Permite ejecutar el workflow manualmente y pasar el número de versión.
   workflow_dispatch:
     inputs:
       version_number:
@@ -9,22 +10,24 @@ on:
         default: '0'
 
 permissions:
-  contents: write # Necesario para hacer el commit del reporte
-  pages: write    
-  id-token: write 
+  contents: read     # Necesario para el checkout
+  pages: write       # Necesario para desplegar en GitHub Pages
+  id-token: write    # Necesario para la autenticación de despliegue
 
 jobs:
   run_regression_and_deploy:
-    runs-on: self-hosted
+    # Mantiene el runner autoalojado
+    runs-on: self-hosted 
+    # Configuración del entorno de despliegue de Pages (necesario para el nuevo método)
     environment:
       name: github-pages
-      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: ⬇️ Checkout del código (CON TOKEN EXPLÍCITO)
+      - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          # Necesario si quieres que los runners autoalojados lean secretos o tokens de forma segura
           token: ${{ secrets.GITHUB_TOKEN }}
           
       # 1. EJECUCIÓN DEL SCRIPT
@@ -36,65 +39,70 @@ jobs:
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
-          REM Limpiar reportes viejos 
+          REM Limpiar reportes viejos (en el runner local)
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
-
-      # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
-      - name: 📝 Renombrar a index.html y Commit a gh-pages
+          
+      # 2. PREPARACIÓN DEL ARTEFACTO (Reporte)
+      # Este paso reemplaza tu lógica de renombrado y el 'git push' a gh-pages
+      - name: 🛠️ Preparar Artefacto de Reporte
+        shell: powershell
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          $ErrorActionPreference = "Stop" # Mejorar robustez en PowerShell
           
-          # 2.1. Renombrar el HTML a index.html (esencial para Pages)
+          # Renombrar a index.html y mover al directorio _site (convención de Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
+              # Renombrar el HTML a index.html
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
           } else {
-              Write-Host "Error: No se encontró el archivo de reporte HTML."
+              Write-Host "Error: No se encontró el archivo de reporte HTML. Deteniendo."
               exit 1
           }
+          # Mover todo el contenido (index.html, imágenes, etc.) al directorio _site
+          Move-Item -Path $reportDir -Destination "_site" -Force
+
+      # 3. SUBIR EL ARTEFACTO PARA EL DESPLIEGUE
+      - name: ⬆️ Subir Artefacto de Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site' # Sube el directorio con el reporte y sus assets
           
-          # 2.2. Configurar Git para la autoría
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
-          git checkout --orphan gh-pages
-          
-          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
-          Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
-          
-          # 2.5. Mover contenido del reporte a la raíz
-          Copy-Item -Path "$reportDir\*" -Destination . -Recurse -Force
-          Remove-Item -Path $reportDir -Recurse -Force
-          
-          # 2.6. Commit y Push
-          git add .
-          git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
-          # Forzar el push a la rama 'gh-pages'
-          git push -f origin gh-pages
-        shell: powershell
-        
-      # 3. Notificación a Slack (CORRECCIÓN DE SINTAXIS YAML Y ESTRUCTURA JSON ROBUSTA)
-      - name: 🔔 Notificación de Reporte a Slack
+  # El Job de despliegue DEBE estar separado en el nuevo método de Pages
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }} # Usa la URL del paso de despliegue
+    runs-on: ubuntu-latest # Se recomienda usar un runner alojado en GitHub para este paso
+    needs: run_regression_and_deploy # Espera a que el job anterior haya terminado
+    
+    steps:
+      # 4. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (¡La clave de la corrección!)
+      - name: 🚀 Desplegar a GitHub Pages y Esperar URL
+        id: deployment
+        uses: actions/deploy-pages@v4 # Esta action espera a que el nuevo reporte esté 100% ONLINE
+
+      # 5. NOTIFICACIÓN A SLACK (USA LA URL CONFIRMADA)
+      - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
+        # Se ejecuta siempre (éxito o fallo en la regresión)
         if: always() 
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
         with:
           payload: |
             {
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status == 'success' && 'Éxito' || 'Fallo' }}",
+              # El status se basa en el job de regresión (el job 'needs'd)
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ needs.run_regression_and_deploy.result == 'success' && 'Éxito' || 'Fallo' }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ needs.run_regression_and_deploy.result == 'success' && '✅ Éxito' || '❌ Falló' }}*"
                   }
                 },
                 {
@@ -104,7 +112,8 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?v=${{ github.run_id }}| Abrir Reporte :link:>"
+                    # IMPORTANTE: Usamos la URL que confirma el despliegue
+                    "text": "*URL del Reporte:* <${{ steps.deployment.outputs.page_url }}| Abrir Reporte :link:>"
                   }
                 },
                 {
