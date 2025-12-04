@@ -9,7 +9,7 @@ on:
         default: '0'
 
 permissions:
-  contents: write 
+  contents: write # Necesario para hacer el commit del reporte
   pages: write    
   id-token: write 
 
@@ -44,10 +44,10 @@ jobs:
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
       # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
-      - name: 📝 Renombrar a index.html y Commit a gh-pages (PROCESO ROBUSTO DE GIT)
+      - name: 📝 Renombrar a index.html y Commit a gh-pages
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          $ErrorActionPreference = "Stop" 
+          $ErrorActionPreference = "Stop" # Mejorar robustez en PowerShell
           
           # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
@@ -62,12 +62,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 2.3. Despliegue de Git MÁS ROBUSTO (Corrección de la causa del 404)
-          git checkout main -f
-          git branch -D gh-pages -f | Out-Null
+          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
           git checkout --orphan gh-pages
           
-          # 2.4. Limpiar el directorio raíz (borrar código fuente)
+          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
           Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
           
           # 2.5. Mover contenido del reporte a la raíz
@@ -81,7 +79,7 @@ jobs:
           git push -f origin gh-pages
         shell: powershell
         
-      # 3. Notificación a Slack (CORREGIDO: Reintroducido campo 'text' requerido)
+      # 3. Notificación a Slack (CORRECCIÓN DE SINTAXIS YAML Y ESTRUCTURA JSON ROBUSTA)
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
@@ -90,13 +88,13 @@ jobs:
         with:
           payload: |
             {
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status == 'success' && 'Éxito' || 'Fallo' }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)* - Estado: ${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }} - Versión: ${{ github.event.inputs.version_number }}"
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
                   }
                 },
                 {
