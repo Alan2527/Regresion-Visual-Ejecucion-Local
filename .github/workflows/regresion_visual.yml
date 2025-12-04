@@ -9,15 +9,16 @@ on:
         default: '0'
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: write # Necesario para hacer el commit del reporte
+  pages: write    
+  id-token: write 
 
 jobs:
   run_regression_and_deploy:
     runs-on: self-hosted
     environment:
       name: github-pages
+      # Construimos la URL manualmente ya que no usamos la salida del deploy-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
 
     steps:
@@ -47,7 +48,7 @@ jobs:
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # 2.1. Renombrar el HTML a index.html
+          # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -56,14 +57,14 @@ jobs:
               exit 1
           }
           
-          # 2.2. Configurar Git
+          # 2.2. Configurar Git para la autoría
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 2.3. Crear rama huérfana (sin historia)
+          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
           git checkout --orphan gh-pages
           
-          # 2.4. Limpiar directorio raíz (borrar código fuente, mantener solo reporte y .git)
+          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
           Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
           
           # 2.5. Mover contenido del reporte a la raíz
@@ -73,16 +74,13 @@ jobs:
           # 2.6. Commit y Push
           git add .
           git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
+          # Forzar el push a la rama 'gh-pages'
           git push -f origin gh-pages
         shell: powershell
         
-      # 3. Configuración de Pages
-      - name: ⚙️ Configurar GitHub Pages
-        uses: actions/configure-pages@v5
-        with:
-          static_site_generator: custom
+      # (Paso 'configure-pages' ELIMINADO porque causaba error y no es necesario aquí)
           
-      # 4. Notificación a Slack
+      # 3. Notificación a Slack
       - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
