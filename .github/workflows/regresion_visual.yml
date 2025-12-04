@@ -114,7 +114,6 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      # Se elimina el \n para asegurar que Slack interprete el enlace correctamente.
                       "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
                     },
                     {
