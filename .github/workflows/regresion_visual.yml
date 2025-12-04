@@ -16,6 +16,7 @@ permissions:
 jobs:
   run_regression_and_deploy:
     runs-on: self-hosted
+    # Asegurarse de que el environment 'github-pages' esté configurado en la repo
     environment:
       name: github-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
@@ -44,10 +45,10 @@ jobs:
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
       # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
-      - name: 📝 Renombrar a index.html y Commit a gh-pages (Optimizado)
+      - name: 📝 Renombrar a index.html y Commit a gh-pages (PROCESO ROBUSTO DE GIT)
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
-          $ErrorActionPreference = "Stop" # Aseguramos que los errores detengan el script
+          $ErrorActionPreference = "Stop" # ¡Añadido para seguridad!
           
           # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
@@ -62,18 +63,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 2.3. Despliegue de Git MÁS ROBUSTO
-          # Aseguramos que el branch actual es 'main' (o el que sea la base)
+          # 2.3. Despliegue de Git MÁS ROBUSTO (Corrección de la causa del 404)
+          # Nos aseguramos de NO estar en 'gh-pages' antes de intentar borrarla o crearla
           git checkout main -f
           
-          # Limpiamos la rama local de despliegue si existe
+          # Borramos la rama local 'gh-pages' si existe, para asegurar la limpieza del checkout --orphan
           git branch -D gh-pages -f | Out-Null
           
-          # Creamos la nueva rama 'gh-pages' sin historial
+          # Creamos la nueva rama 'gh-pages' sin historial (esencial para GitHub Pages)
           git checkout --orphan gh-pages
           
-          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
-          # Excluimos .git y el directorio de reportes para el movimiento
+          # 2.4. Limpiar el directorio raíz (borrar código fuente)
           Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
           
           # 2.5. Mover contenido del reporte a la raíz
@@ -87,17 +87,16 @@ jobs:
           git push -f origin gh-pages
         shell: powershell
         
-      # 3. Notificación a Slack (Corregido el formato del Payload)
-      - name: 🔔 Notificación de Reporte a Slack (Optimizado Payload)
+      # 3. Notificación a Slack (Revertida a sintaxis YAML simple)
+      - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
         with:
-          # Usamos un JSON string plano con 'toJson' para asegurar el formato correcto
-          payload: ${{ tojson(
+          payload: |
             {
-              "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*",
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status }}",
               "blocks": [
                 {
                   "type": "section",
@@ -138,4 +137,3 @@ jobs:
                 }
               ]
             }
-          ) }}
