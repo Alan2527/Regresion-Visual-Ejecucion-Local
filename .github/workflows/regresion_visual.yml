@@ -1,7 +1,6 @@
 name: Regresión Visual - DESKTOP PROD
 
 on:
-  # Permite ejecutar el workflow manualmente y pasar el número de versión.
   workflow_dispatch:
     inputs:
       version_number:
@@ -10,32 +9,23 @@ on:
         default: '0'
 
 permissions:
-  contents: read     # Necesario para el checkout
-  pages: write       # Necesario para desplegar en GitHub Pages
+  contents: read     
+  pages: write       # Necesario para el despliegue
   id-token: write    # Necesario para la autenticación de despliegue
 
 jobs:
-  run_regression_and_deploy:
-    # Mantiene el runner autoalojado
+  # 1. JOB DE EJECUCIÓN (Corre en tu Runner de Windows)
+  run_regression:
     runs-on: self-hosted 
-    # Configuración del entorno de despliegue de Pages (necesario para el nuevo método)
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
-        with:
-          # Necesario si quieres que los runners autoalojados lean secretos o tokens de forma segura
-          token: ${{ secrets.GITHUB_TOKEN }}
           
-      # 1. EJECUCIÓN DEL SCRIPT
+      # 1.1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
         shell: cmd
         run: |
           @echo off
-          REM La configuración de UTF-8 es CRÍTICA
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
@@ -46,63 +36,78 @@ jobs:
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
           
-      # 2. PREPARACIÓN DEL ARTEFACTO (Reporte)
-      # Este paso reemplaza tu lógica de renombrado y el 'git push' a gh-pages
-      - name: 🛠️ Preparar Artefacto de Reporte
+      # 1.2. PREPARACIÓN DEL ARTEFACTO
+      - name: 🛠️ Preparar Archivos para Despliegue
         shell: powershell
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # Renombrar a index.html y mover al directorio _site (convención de Pages)
+          # Renombrar a index.html
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
-              # Renombrar el HTML a index.html
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
           } else {
               Write-Host "Error: No se encontró el archivo de reporte HTML. Deteniendo."
               exit 1
           }
-          # Mover todo el contenido (index.html, imágenes, etc.) al directorio _site
+          # Mover todo el contenido al directorio _site
           Move-Item -Path $reportDir -Destination "_site" -Force
-
-      # 3. SUBIR EL ARTEFACTO PARA EL DESPLIEGUE
-      - name: ⬆️ Subir Artefacto de Pages
-        uses: actions/upload-pages-artifact@v3
+      
+      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR (FIX DE COMPATIBILIDAD)
+      - name: ⬆️ Subir Artefacto para Transferencia
+        uses: actions/upload-artifact@v4 # Usa la acción genérica, compatible con Windows tar
         with:
-          path: '_site' # Sube el directorio con el reporte y sus assets
-          
-  # El Job de despliegue DEBE estar separado en el nuevo método de Pages
-  deploy:
+          name: pages-report-artifact
+          path: _site
+          retention-days: 1 # Opcional: define cuánto tiempo guardarlo
+
+  # 2. JOB DE DESPLIEGUE (Corre en un Runner de GitHub compatible)
+  deploy_pages:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }} # Usa la URL del paso de despliegue
-    runs-on: ubuntu-latest # Se recomienda usar un runner alojado en GitHub para este paso
-    needs: run_regression_and_deploy # Espera a que el job anterior haya terminado
+      # Usa la URL que te dará el paso de despliegue
+      url: ${{ steps.deployment.outputs.page_url }} 
     
+    # Usa un runner alojado en GitHub (Linux/Ubuntu) donde las Actions de Pages funcionan sin problemas
+    runs-on: ubuntu-latest 
+    needs: run_regression # Espera a que la regresión y subida del artefacto terminen
+
     steps:
-      # 4. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (¡La clave de la corrección!)
+      # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
+      - name: ⬇️ Descargar Reporte (del runner de Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-report-artifact
+          path: . # Descarga el contenido del artefacto a la carpeta actual (será la carpeta _site)
+
+      # 2.2. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
+      - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
+        uses: actions/upload-pages-artifact@v3 # Este paso ahora corre en Ubuntu, compatible con 'tar'
+        with:
+          path: _site 
+          
+      # 2.3. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
         id: deployment
-        uses: actions/deploy-pages@v4 # Esta action espera a que el nuevo reporte esté 100% ONLINE
+        uses: actions/deploy-pages@v4 # Espera a que la URL esté 100% actualizada
 
-      # 5. NOTIFICACIÓN A SLACK (USA LA URL CONFIRMADA)
+      # 2.4. NOTIFICACIÓN A SLACK (USA LA URL CONFIRMADA)
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
-        # Se ejecuta siempre (éxito o fallo en la regresión)
+        # Revisa el resultado del job anterior (run_regression)
         if: always() 
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
         with:
           payload: |
             {
-              # El status se basa en el job de regresión (el job 'needs'd)
-              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ needs.run_regression_and_deploy.result == 'success' && 'Éxito' || 'Fallo' }}",
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ needs.run_regression.result == 'success' && 'Éxito' || 'Fallo' }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ needs.run_regression_and_deploy.result == 'success' && '✅ Éxito' || '❌ Falló' }}*"
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ needs.run_regression.result == 'success' && '✅ Éxito' || '❌ Falló' }}*"
                   }
                 },
                 {
@@ -112,7 +117,6 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    # IMPORTANTE: Usamos la URL que confirma el despliegue
                     "text": "*URL del Reporte:* <${{ steps.deployment.outputs.page_url }}| Abrir Reporte :link:>"
                   }
                 },
