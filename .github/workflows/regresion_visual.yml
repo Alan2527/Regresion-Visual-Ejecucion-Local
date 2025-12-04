@@ -9,19 +9,19 @@ on:
         default: '0'
 
 permissions:
-  contents: write 
-  pages: write    # Permiso requerido para la acción de Pages
-  id-token: write # Permiso requerido para la acción de Pages (OIDC)
+  contents: write # Necesario para hacer el commit del reporte
+  pages: write    
+  id-token: write 
 
 jobs:
-  run_regression:
-    # ⚠️ Importante: El job de despliegue debe llamarse 'deployment' y debe
-    # usar el entorno 'github-pages', pero el job que prepara el artefacto
-    # no necesita la configuración del entorno, solo los permisos.
+  run_regression_and_deploy:
     runs-on: self-hosted
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
 
     steps:
-      - name: ⬇️ Checkout del código
+      - name: ⬇️ Checkout del código (CON TOKEN EXPLÍCITO)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 
@@ -29,7 +29,6 @@ jobs:
           
       # 1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
-        # El directorio de salida del script es "Reportes HTML - TN - DESKTOP - PROD"
         shell: cmd
         run: |
           @echo off
@@ -43,14 +42,13 @@ jobs:
           )
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
-          
-      # 2. Renombrar el reporte a index.html (Preparación)
-      - name: 📝 Renombrar el HTML a index.html
-        shell: powershell
+
+      # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
+      - name: 📝 Renombrar a index.html y Commit a gh-pages
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # Renombrar el HTML a index.html (esencial para Pages)
+          # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -59,15 +57,29 @@ jobs:
               exit 1
           }
           
-      # 3. Subir el Directorio como Artefacto de Pages
-      - name: ⬆️ Subir Artefacto del Reporte
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # El path debe ser el directorio que contiene index.html y assets
-          path: 'Reportes HTML - TN - DESKTOP - PROD'
+          # 2.2. Configurar Git para la autoría
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           
-      # 4. Notificación a Slack (Movida antes del despliegue final)
-      - name: 🔔 Notificación de Reporte a Slack (PENDIENTE DE DESPLIEGUE)
+          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
+          git checkout --orphan gh-pages
+          
+          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
+          Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
+          
+          # 2.5. Mover contenido del reporte a la raíz
+          Copy-Item -Path "$reportDir\*" -Destination . -Recurse -Force
+          Remove-Item -Path $reportDir -Recurse -Force
+          
+          # 2.6. Commit y Push
+          git add .
+          git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
+          # Forzar el push a la rama 'gh-pages'
+          git push -f origin gh-pages
+        shell: powershell
+        
+      # 3. Notificación a Slack
+      - name: 🔔 Notificación de Reporte a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
         env:
@@ -116,16 +128,3 @@ jobs:
                 }
               ]
             }
-
-  # 5. Nuevo Job: Despliegue en GitHub Pages
-  deployment:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest # No necesita el runner auto-alojado
-    needs: run_regression
-    
-    steps:
-      - name: 🚀 Desplegar a GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
