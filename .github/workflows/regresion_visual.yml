@@ -1,6 +1,7 @@
 name: Regresión Visual - DESKTOP PROD
 
 on:
+  # Permite ejecutar el workflow manualmente y pasar el número de versión.
   workflow_dispatch:
     inputs:
       version_number:
@@ -9,12 +10,12 @@ on:
         default: '0'
 
 permissions:
-  contents: read     
-  pages: write       # Necesario para el despliegue
+  contents: read     # Necesario para el checkout
+  pages: write       # Necesario para desplegar en GitHub Pages
   id-token: write    # Necesario para la autenticación de despliegue
 
 jobs:
-  # 1. JOB DE EJECUCIÓN (Corre en tu Runner de Windows)
+  # 1. JOB DE EJECUCIÓN (Corre en tu Runner de Windows y sube el artefacto)
   run_regression:
     runs-on: self-hosted 
     steps:
@@ -26,6 +27,7 @@ jobs:
         shell: cmd
         run: |
           @echo off
+          REM La configuración de UTF-8 es CRÍTICA
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
@@ -53,13 +55,13 @@ jobs:
           # Mover todo el contenido al directorio _site
           Move-Item -Path $reportDir -Destination "_site" -Force
       
-      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR (FIX DE COMPATIBILIDAD)
+      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR (Compatible con Windows)
       - name: ⬆️ Subir Artefacto para Transferencia
-        uses: actions/upload-artifact@v4 # Usa la acción genérica, compatible con Windows tar
+        uses: actions/upload-artifact@v4
         with:
-          name: pages-report-artifact
-          path: _site
-          retention-days: 1 # Opcional: define cuánto tiempo guardarlo
+          name: pages-report-artifact # Nombre del artefacto
+          path: _site # Sube el contenido de _site
+          retention-days: 1 
 
   # 2. JOB DE DESPLIEGUE (Corre en un Runner de GitHub compatible)
   deploy_pages:
@@ -68,9 +70,9 @@ jobs:
       # Usa la URL que te dará el paso de despliegue
       url: ${{ steps.deployment.outputs.page_url }} 
     
-    # Usa un runner alojado en GitHub (Linux/Ubuntu) donde las Actions de Pages funcionan sin problemas
+    # Este paso debe correr en un runner alojado en GitHub (Linux/Ubuntu)
     runs-on: ubuntu-latest 
-    needs: run_regression # Espera a que la regresión y subida del artefacto terminen
+    needs: run_regression # Espera a que el job anterior haya terminado
 
     steps:
       # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
@@ -78,13 +80,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pages-report-artifact
-          path: . # Descarga el contenido del artefacto a la carpeta actual (será la carpeta _site)
+          # Importante: Si no se especifica 'path', el contenido se descarga en una carpeta con el mismo nombre del artefacto.
 
       # 2.2. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
       - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
-        uses: actions/upload-pages-artifact@v3 # Este paso ahora corre en Ubuntu, compatible con 'tar'
+        uses: actions/upload-pages-artifact@v3 
         with:
-          path: _site 
+          # CORRECCIÓN: Apuntamos a la carpeta que download-artifact creó con el contenido
+          path: pages-report-artifact 
           
       # 2.3. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
@@ -94,7 +97,6 @@ jobs:
       # 2.4. NOTIFICACIÓN A SLACK (USA LA URL CONFIRMADA)
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
-        # Revisa el resultado del job anterior (run_regression)
         if: always() 
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
