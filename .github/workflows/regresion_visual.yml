@@ -1,4 +1,4 @@
-name:  Regresión Visual - DESKTOP PROD
+name: Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -47,6 +47,7 @@ jobs:
       - name: 📝 Renombrar a index.html y Commit a gh-pages
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
+          $ErrorActionPreference = "Stop" # Aseguramos que los errores detengan el script
           
           # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
@@ -61,7 +62,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
+          # 2.3. CREAR Y CAMBIAR A LA RAMA DE DESPLIEGUE (Corregido)
+          # Primero, limpiamos cualquier rama 'gh-pages' local que pueda existir
+          git branch -D gh-pages -f | Out-Null
+          
+          # Usamos 'checkout --orphan' para forzar la creación sin historial (limpiando el error de "fatal: a branch named 'gh-pages' already exists")
           git checkout --orphan gh-pages
           
           # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
