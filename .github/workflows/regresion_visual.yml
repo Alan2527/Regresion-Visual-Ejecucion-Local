@@ -101,6 +101,8 @@ jobs:
                 {
                   "type": "divider"
                 },
+                
+                # Bloque para la Versión y el Estado Final
                 {
                   "type": "section",
                   "fields": [
@@ -111,16 +113,26 @@ jobs:
                     {
                       "type": "mrkdwn",
                       "text": "*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Ver Ejecución:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
                     }
                   ]
+                },
+                
+                # Bloque dedicado SOLO para la URL del Reporte (Esto debe solucionar la visibilidad)
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
+                  }
+                },
+                
+                # Bloque dedicado para el Enlace de la Ejecución de GitHub
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Ver Ejecución:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
+                  }
                 }
               ]
             }
