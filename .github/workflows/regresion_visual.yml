@@ -1,4 +1,4 @@
-name: 👁️ Regresión Visual - DESKTOP PROD
+name:  Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   run_regression_and_deploy:
+    # Usamos self-hosted (Windows) para la ejecución
     runs-on: self-hosted
     environment:
       name: github-pages
@@ -40,24 +41,59 @@ jobs:
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
 
-      # 2. Renombrar el HTML generado a index.html
-      - name: 📝 Renombrar a index.html para Pages
+      # 2. Preparación, Limpieza y Compresión (USO DE POWERSHELL, NO DE TAR)
+      - name: 📝 Crear Artefacto ZIP Limpio (PowerShell)
+        id: prepare_artifact
         shell: powershell
         run: |
-          cd "Reportes HTML - TN - DESKTOP - PROD"
-          Get-ChildItem -Filter "Reporte_DOM_Estructural_*.html" | Rename-Item -NewName "index.html"
+          $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
+          $zipPath = "github-pages.zip" # Nombre requerido para el despliegue
+          $tempDir = "pages_temp"
           
-      # 3. Configuración del Entorno de Pages
+          # 1. Renombrar el HTML a index.html (necesario para Pages)
+          $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
+          if ($reportFile) {
+              Rename-Item -Path $reportFile.FullName -NewName "index.html"
+          } else {
+              Write-Host "Error: No se encontró el archivo de reporte HTML."
+              exit 1
+          }
+          
+          # 2. Crear la carpeta temporal limpia
+          if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
+          New-Item -Path $tempDir -ItemType Directory | Out-Null
+          
+          # 3. Mover/Copiar los contenidos esenciales a la carpeta temporal
+          Get-ChildItem -Path "$reportDir\*" | Move-Item -Destination $tempDir
+          
+          # 4. Eliminar el directorio original
+          Remove-Item $reportDir -Recurse -Force
+
+          # 5. Limpiar ZIP antiguo si existe
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          
+          # 6. COMPRESIÓN MANUAL
+          Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath
+          
+          # 7. Limpiar la carpeta temporal
+          Remove-Item $tempDir -Recurse -Force
+          
+          # 8. Establecer la ruta del ZIP como la salida
+          echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
+
+      # 3. Cargar el ZIP como Artefacto (Usamos la acción GENÉRICA de subida)
+      - name: ⬆️ Cargar Artefacto ZIP (Formato Pages)
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: ${{ steps.prepare_artifact.outputs.ZIP_PATH }}
+          retention-days: 1
+      
+      # 4. Configuración del Entorno de Pages
       - name: ⚙️ Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      # 4. Cargar el Reporte para Despliegue (Debe funcionar con la ruta simple)
-      - name: ⬆️ Cargar Reporte para Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: 'Reportes HTML - TN - DESKTOP - PROD'
-
-      # 5. Desplegar a GitHub Pages
+      # 5. Desplegar a GitHub Pages (Consume el artefacto subido en el paso 3)
       - name: 🌐 Desplegar a GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
