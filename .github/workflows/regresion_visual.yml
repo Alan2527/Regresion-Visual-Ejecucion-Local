@@ -1,4 +1,4 @@
-name: 👁️ Regresión Visual - DESKTOP PROD
+name:  Regresión Visual - DESKTOP PROD
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: '0'
 
 permissions:
-  contents: write
+  contents: write # Necesario para hacer el commit del reporte
   pages: write    
   id-token: write 
 
@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 
-          # CORRECCIÓN DE ERROR: Usar el token para la autenticación en el runner autoalojado
+          # CORRECCIÓN DE AUTENTICACIÓN: Usar el token para el runner autoalojado
           token: ${{ secrets.GITHUB_TOKEN }}
           
       # 1. EJECUCIÓN DEL SCRIPT
@@ -63,6 +63,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
+          # NOTA: El `fatal: a branch named 'gh-pages' already exists` es normal en la primera ejecución si la rama ya existe.
           git checkout --orphan gh-pages
           
           # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
@@ -113,7 +114,8 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*URL del Reporte:*\n<https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
+                      # Se elimina el \n para asegurar que Slack interprete el enlace correctamente.
+                      "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/| Abrir Reporte :link:>"
                     },
                     {
                       "type": "mrkdwn",
