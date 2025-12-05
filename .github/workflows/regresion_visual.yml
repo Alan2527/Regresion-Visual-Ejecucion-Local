@@ -1,7 +1,6 @@
 name: Regresión Visual - DESKTOP PROD
 
 on:
-  # Permite ejecutar el workflow manualmente y pasar el número de versión.
   workflow_dispatch:
     inputs:
       version_number:
@@ -22,29 +21,24 @@ jobs:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
           
-      # 1.1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
         shell: cmd
         run: |
           @echo off
-          REM La configuración de UTF-8 es CRÍTICA
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
-          REM Limpiar reportes viejos 
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
           
-      # 1.2. PREPARACIÓN DEL ARTEFACTO (Crea la carpeta _site)
       - name: 🛠️ Preparar Archivos para Despliegue
         shell: powershell
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # Renombrar a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -52,58 +46,51 @@ jobs:
               Write-Host "Error: No se encontró el archivo de reporte HTML. Deteniendo."
               exit 1
           }
-          # Mover todo el contenido al directorio _site 
+          # Mover todo el contenido al directorio _site (CRÍTICO)
           Move-Item -Path $reportDir -Destination "_site" -Force
       
-      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR
       - name: ⬆️ Subir Artefacto para Transferencia
         uses: actions/upload-artifact@v4
         with:
-          name: pages-report-artifact
+          name: pages-report-artifact 
           path: _site # Sube el contenido de _site
           retention-days: 1 
 
-  # 2. JOB DE DESPLIEGUE (Corre en un Runner de GitHub compatible: Ubuntu)
+  # 2. JOB DE DESPLIEGUE (Corre en Ubuntu y usa las acciones oficiales de Pages)
   deploy_pages:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }} 
     
     runs-on: ubuntu-latest 
-    needs: run_regression # Depende del job de ejecución
+    needs: run_regression 
 
     steps:
-      # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
       - name: ⬇️ Descargar Reporte (a la carpeta 'temp_artifact')
         uses: actions/download-artifact@v4
         with:
           name: pages-report-artifact
           path: temp_artifact
           
-      # 2.2. FIX CRÍTICO: Mover el contenido al directorio _site estándar
-      # Esto resuelve el error 'tar: _site: Cannot open: No such file or directory'
+      # FIX CRÍTICO: Mover manualmente los archivos a _site. ESTO ARREGLA EL ERROR DE RUTA.
       - name: 🛠️ FIX: Re-estructurar el Artefacto para la Acción de Pages
         run: |
-          # 1. Borrar y crear el directorio _site
           rm -rf _site
           mkdir _site
-          # 2. Mover TODO el contenido desde la subcarpeta generada a _site
+          # Mover el contenido de la subcarpeta que download-artifact creó a la carpeta _site
           mv temp_artifact/pages-report-artifact/* _site/
           
         shell: bash
 
-      # 2.3. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
       - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
         uses: actions/upload-pages-artifact@v3 
         with:
-          path: _site # ¡Ruta Final Garantizada!
+          path: _site 
           
-      # 2.4. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
         id: deployment
         uses: actions/deploy-pages@v4 
 
-      # 2.5. NOTIFICACIÓN A SLACK (Usa la URL confirmada y el estado del job anterior)
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
