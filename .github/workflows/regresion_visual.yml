@@ -59,7 +59,7 @@ jobs:
       - name: ⬆️ Subir Artefacto para Transferencia
         uses: actions/upload-artifact@v4
         with:
-          name: pages-report-artifact # Nombre del artefacto
+          name: pages-report-artifact
           path: _site # Sube el contenido de _site
           retention-days: 1 
 
@@ -67,11 +67,10 @@ jobs:
   deploy_pages:
     environment:
       name: github-pages
-      # Usar la URL que te dará el paso de despliegue
       url: ${{ steps.deployment.outputs.page_url }} 
     
     runs-on: ubuntu-latest 
-    needs: run_regression # Espera a que el job anterior haya terminado
+    needs: run_regression # Depende del job de ejecución
 
     steps:
       # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
@@ -79,16 +78,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pages-report-artifact
-          path: temp_artifact # Descarga el contenido del artefacto a esta carpeta temporal.
+          path: temp_artifact
           
       # 2.2. FIX CRÍTICO: Mover el contenido al directorio _site estándar
-      # ESTO RESUELVE EL ERROR 'tar: _site: Cannot open: No such file or directory'
+      # Esto resuelve el error 'tar: _site: Cannot open: No such file or directory'
       - name: 🛠️ FIX: Re-estructurar el Artefacto para la Acción de Pages
         run: |
           # 1. Borrar y crear el directorio _site
           rm -rf _site
           mkdir _site
-          # 2. Mover TODO el contenido desde la subcarpeta generada por download-artifact a _site
+          # 2. Mover TODO el contenido desde la subcarpeta generada a _site
           mv temp_artifact/pages-report-artifact/* _site/
           
         shell: bash
