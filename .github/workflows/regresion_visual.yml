@@ -31,7 +31,7 @@ jobs:
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
-          REM Limpiar reportes viejos (en el runner local)
+          REM Limpiar reportes viejos 
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
@@ -44,7 +44,7 @@ jobs:
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
           
-          # Renombrar a index.html
+          # Renombrar a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
               Rename-Item -Path $reportFile.FullName -NewName "index.html"
@@ -52,10 +52,10 @@ jobs:
               Write-Host "Error: No se encontró el archivo de reporte HTML. Deteniendo."
               exit 1
           }
-          # Mover todo el contenido al directorio _site (que es lo que Pages espera)
+          # Mover todo el contenido al directorio _site 
           Move-Item -Path $reportDir -Destination "_site" -Force
       
-      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR (pages-report-artifact)
+      # 1.3. SUBIR EL REPORTE COMO ARTEFACTO ESTÁNDAR
       - name: ⬆️ Subir Artefacto para Transferencia
         uses: actions/upload-artifact@v4
         with:
@@ -67,7 +67,7 @@ jobs:
   deploy_pages:
     environment:
       name: github-pages
-      # Usar la URL que te dará el paso de despliegue (Fix para el race condition)
+      # Usar la URL que te dará el paso de despliegue
       url: ${{ steps.deployment.outputs.page_url }} 
     
     runs-on: ubuntu-latest 
@@ -82,13 +82,13 @@ jobs:
           path: temp_artifact # Descarga el contenido del artefacto a esta carpeta temporal.
           
       # 2.2. FIX CRÍTICO: Mover el contenido al directorio _site estándar
+      # ESTO RESUELVE EL ERROR 'tar: _site: Cannot open: No such file or directory'
       - name: 🛠️ FIX: Re-estructurar el Artefacto para la Acción de Pages
         run: |
           # 1. Borrar y crear el directorio _site
           rm -rf _site
           mkdir _site
           # 2. Mover TODO el contenido desde la subcarpeta generada por download-artifact a _site
-          # La estructura es siempre: temp_artifact / pages-report-artifact / [contenidos]
           mv temp_artifact/pages-report-artifact/* _site/
           
         shell: bash
@@ -97,15 +97,14 @@ jobs:
       - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
         uses: actions/upload-pages-artifact@v3 
         with:
-          # Apuntamos a la ruta garantizada por el FIX
           path: _site # ¡Ruta Final Garantizada!
           
       # 2.4. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
         id: deployment
-        uses: actions/deploy-pages@v4 # Espera a que la URL esté 100% actualizada
+        uses: actions/deploy-pages@v4 
 
-      # 2.5. NOTIFICACIÓN A SLACK (Usa la URL confirmada)
+      # 2.5. NOTIFICACIÓN A SLACK (Usa la URL confirmada y el estado del job anterior)
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
