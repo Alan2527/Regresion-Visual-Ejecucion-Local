@@ -21,23 +21,19 @@ jobs:
       - name: ⬇️ Checkout del código
         uses: actions/checkout@v4
           
-      # 1.1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
         shell: cmd
         run: |
           @echo off
-          REM La configuración de UTF-8 es CRÍTICA
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
-          REM Limpiar reportes viejos (en el runner local)
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
           
-      # 1.2. PREPARACIÓN DEL ARTEFACTO
       - name: 🛠️ Preparar Archivos para Despliegue
         shell: powershell
         run: |
@@ -71,25 +67,39 @@ jobs:
 
     steps:
       # 2.1. DESCARGAR EL ARTEFACTO CREADO EN EL JOB ANTERIOR
-      - name: ⬇️ Descargar Reporte
+      - name: ⬇️ Descargar Reporte (a la carpeta 'temp_artifact')
         uses: actions/download-artifact@v4
         with:
           name: pages-report-artifact
-          path: artifact_staging # <-- Descargamos a esta carpeta temporal.
+          path: temp_artifact # Descarga el contenido del artefacto a esta carpeta temporal.
           
-      # 2.2. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
-      - name: ⬆️ Subir Artefacto para Pages (¡FIX de Ruta Definitivo!)
+      # 2.2. FIX CRÍTICO: Mover el contenido al directorio _site estándar
+      - name: 🛠️ FIX: Re-estructurar el Artefacto para la Acción de Pages
+        run: |
+          # 1. Borrar cualquier _site anterior si existe
+          rm -rf _site
+          # 2. Crear el directorio _site
+          mkdir _site
+          # 3. Mover TODO el contenido dentro de la subcarpeta que 'download-artifact' creó a _site
+          # Usamos find para mover archivos y directorios de forma segura.
+          find temp_artifact/pages-report-artifact -maxdepth 1 -mindepth 1 -exec mv {} _site/ \;
+          # 4. Verificar que _site no esté vacío (Opcional, pero bueno para el debugging)
+          ls -R _site
+        shell: bash
+
+      # 2.3. SUBIR EL ARTEFACTO CON EL FORMATO DE PAGES
+      - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
         uses: actions/upload-pages-artifact@v3 
         with:
-          # Esta es la ruta correcta: carpeta temporal / subcarpeta con nombre del artefacto
-          path: artifact_staging/pages-report-artifact # <-- ¡Esta ruta es la clave!
+          # Apuntamos a la ruta garantizada que acabamos de crear con el FIX
+          path: _site # <-- ¡Ruta Final Garantizada!
           
-      # 2.3. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (Soluciona el problema de la URL antigua)
+      # 2.4. DESPLEGAR A PAGES Y ESPERAR CONFIRMACIÓN (FIX de la URL)
       - name: 🚀 Desplegar a GitHub Pages y Esperar URL
         id: deployment
         uses: actions/deploy-pages@v4 
 
-      # 2.4. NOTIFICACIÓN A SLACK (Usa la URL confirmada)
+      # 2.5. NOTIFICACIÓN A SLACK
       - name: 🔔 Notificación a Slack
         uses: slackapi/slack-github-action@v1.23.0
         if: always() 
