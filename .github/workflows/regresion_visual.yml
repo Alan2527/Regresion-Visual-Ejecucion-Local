@@ -8,20 +8,26 @@ on:
         required: true
         default: '0'
 
-# Permisos necesarios para el despliegue con el método de Artifacts
 permissions:
-  contents: read     
-  pages: write       
-  id-token: write    
+  contents: write # Necesario para hacer el commit del reporte
+  pages: write    
+  id-token: write 
 
 jobs:
-  # 1. JOB DE EJECUCIÓN: Corre la regresión en tu Runner de Windows
-  run_regression:
-    runs-on: self-hosted 
+  run_regression_and_deploy:
+    runs-on: self-hosted
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
     steps:
-      - name: ⬇️ Checkout del código
+      - name: ⬇️ Checkout del código (CON TOKEN EXPLÍCITO)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+          token: ${{ secrets.GITHUB_TOKEN }}
           
+      # 1. EJECUCIÓN DEL SCRIPT
       - name: 🚀 Ejecutar Regresión Visual
         shell: cmd
         run: |
@@ -30,73 +36,83 @@ jobs:
           chcp 65001
           set PYTHONIOENCODING=utf-8
           
+          REM Limpiar reportes viejos 
           if exist "Reportes HTML - TN - DESKTOP - PROD" (
             rmdir /s /q "Reportes HTML - TN - DESKTOP - PROD"
           )
           
           py regre_visual_tn_desk_prod.py ${{ inputs.version_number }}
-          
-      # 🛠️ IMPORTANTE: Renombrar a index.html y mover el contenido a _site
-      - name: 🛠️ Preparar Archivos para Despliegue
-        shell: powershell
+
+      # 2. Renombrar y Desplegar el Reporte a la Rama 'gh-pages'
+      - name: 📝 Renombrar a index.html y Commit a gh-pages
         run: |
           $reportDir = "Reportes HTML - TN - DESKTOP - PROD"
+          $ErrorActionPreference = "Stop" # Mejorar robustez en PowerShell
           
+          # 2.1. Renombrar el HTML a index.html (esencial para Pages)
           $reportFile = Get-ChildItem -Path $reportDir -Filter "Reporte_DOM_Estructural_*.html"
           if ($reportFile) {
-              Rename-Item -Path $reportFile.FullName -NewName "index.html" 
+              Rename-Item -Path $reportFile.FullName -NewName "index.html"
           } else {
               Write-Host "Error: No se encontró el archivo de reporte HTML."
               exit 1
           }
-          # Crea la carpeta _site y mueve el contenido dentro (Formato que GitHub Pages espera)
-          Move-Item -Path $reportDir -Destination "_site" -Force
-      
-      - name: ⬆️ Subir Artefacto para Transferencia (Desde Windows)
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages-report-artifact 
-          path: _site 
-          retention-days: 1 
-
-  # 2. JOB DE DESPLIEGUE: Corre en el Runner de GitHub (Ubuntu) y usa la acción oficial
-  deploy_pages:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }} 
-    
-    runs-on: ubuntu-latest 
-    needs: run_regression 
-
-    steps:
-      - name: ⬇️ Descargar Reporte (a la carpeta 'temp_artifact')
-        uses: actions/download-artifact@v4
-        with:
-          name: pages-report-artifact
-          path: temp_artifact
           
-      # 🛠️ FIX DE RUTA (RESUELVE EL ERROR 'tar: _site: Cannot open')
-      - name: "🛠️ FIX: Re-estructurar el Artefacto para la Acción de Pages"
-        run: |
-          # Limpiar y crear el directorio _site
-          rm -rf _site
-          mkdir _site
-          # Mover el contenido de la subcarpeta que download-artifact creó a _site
-          mv temp_artifact/pages-report-artifact/* _site/
+          # 2.2. Configurar Git para la autoría
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           
-        shell: bash
-
-      - name: ⬆️ Subir Artefacto para Pages (Formato Oficial)
-        uses: actions/upload-pages-artifact@v3 
-        with:
-          path: _site 
+          # 2.3. Crear y cambiar a la rama de despliegue (borrando historial previo)
+          git checkout --orphan gh-pages
           
-      - name: 🚀 Desplegar a GitHub Pages y Esperar URL
-        id: deployment
-        uses: actions/deploy-pages@v4 
+          # 2.4. Limpiar el directorio raíz (borrar código fuente) para dejar solo el reporte
+          Get-ChildItem -Path . -Exclude ".git", "$reportDir" -Force | Remove-Item -Recurse -Force
+          
+          # 2.5. Mover contenido del reporte a la raíz
+          Copy-Item -Path "$reportDir\*" -Destination . -Recurse -Force
+          Remove-Item -Path $reportDir -Recurse -Force
+          
+          # 2.6. Commit y Push
+          git add .
+          git commit -m "Deploy: Reporte v${{ github.event.inputs.version_number }} (Run ID ${{ github.run_id }})"
+          # Forzar el push a la rama 'gh-pages'
+          git push -f origin gh-pages
+        shell: powershell
         
-      # Paso de registro de URL (Indentation check OK)
-      - name: 📝 URL del Reporte
-        run: |
-          echo "✅ Despliegue completado. El reporte está disponible en:"
-          echo "${{ steps.deployment.outputs.page_url }}"
+      # 3. Notificación a Slack (SINTAXIS REFORZADA)
+      - name: 🔔 Notificación de Reporte a Slack
+        uses: slackapi/slack-github-action@v1.23.0
+        if: always() 
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
+        with:
+          payload: |
+            {
+              "text": "*Reporte de Regresión Visual (Desktop PROD)* - Estado: ${{ job.status == 'success' && 'Éxito' || 'Fallo' }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":chart_with_upwards_trend: *Ejecución de Regresión (DESKTOP PROD)*\n\n*Versión Testeada:*\n${{ github.event.inputs.version_number }}\n\n*Estado Final:*\n*${{ job.status == 'success' && '✅ Éxito' || '❌ Falló' }}*"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*URL del Reporte:* <https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?v=${{ github.run_id }}| Abrir Reporte :link:>"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Ver Ejecución:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Enlace a GitHub>"
+                  }
+                }
+              ]
+            }
